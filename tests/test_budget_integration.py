@@ -56,5 +56,24 @@ class BudgetIntegrationTests(unittest.TestCase):
         other.post('/api/budgets',json={'category':'Food','month':'2026-11','amount':99})
         self.assertEqual(self.client.get('/api/budgets?month=2026-11').json,[])
 
+    def test_export_summary(self):
+        tx = lambda **k: self.client.post('/api/transactions', json=dict({'type':'expense','amount':50,'category':'Food','date':'2026-11-02','description':'lunch'}, **k))
+        tx(); tx(type='income', category='Salary', amount=500, description='=HYPERLINK("x")'); tx(date='2026-10-30', amount=999)
+        self.client.post('/api/budgets', json={'category':'Food','month':'2026-11','amount':100})
+        r = self.client.get('/api/export?month=2026-11')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('text/csv', r.content_type)
+        self.assertIn('finance-summary-2026-11.csv', r.headers['Content-Disposition'])
+        text = r.data.decode('utf-8-sig')
+        self.assertIn('Total Income,500.00', text)
+        self.assertIn('Total Expenses,50.00', text)   # October expense excluded
+        self.assertIn('Balance,450.00', text)
+        self.assertIn('Food,100.00,50.00,50.00,50.0', text)
+        self.assertNotIn('999', text)
+        self.assertIn("'=HYPERLINK", text)             # formula neutralised
+        self.assertEqual(self.client.get('/api/export?month=2026-13').status_code, 400)
+        other = app_module.app.test_client()
+        self.assertEqual(other.get('/api/export?month=2026-11').status_code, 401)
+
 if __name__ == '__main__':
     unittest.main()

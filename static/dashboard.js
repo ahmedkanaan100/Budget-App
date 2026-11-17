@@ -13,6 +13,21 @@ document.addEventListener("DOMContentLoaded", function () {
     loadDashboard();
 
     monthInput.addEventListener("change", loadDashboard);
+
+    // Sprint 4: export the selected month's summary.
+    const exportLink = document.getElementById("export-csv");
+    exportLink.addEventListener("click", function (event) {
+        if (!monthInput.value) {
+            event.preventDefault();
+            alert("Select a month to export.");
+            return;
+        }
+        exportLink.href = `/api/export?month=${encodeURIComponent(monthInput.value)}`;
+    });
+
+    document.getElementById("print-report").addEventListener("click", function () {
+        window.print();
+    });
 });
 
 

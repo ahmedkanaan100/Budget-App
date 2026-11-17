@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
 import sqlite3
 import math
 import re
+import csv
+import io
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -643,6 +645,110 @@ def save_budget():
     return jsonify({
         "message": f"{category} budget saved for {month}."
     })
+
+
+# -----------------------------
+# EXPORT FINANCIAL SUMMARY (Sprint 4)
+# -----------------------------
+
+def csv_safe(value):
+    """Stop spreadsheet apps from running text such as =SUM(...) as a formula."""
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
+@app.route("/api/export", methods=["GET"])
+def export_summary():
+    if not logged_in():
+        return jsonify({"error": "Not logged in"}), 401
+
+    month = request.args.get("month", datetime.now().strftime("%Y-%m"))
+    if not valid_month(month):
+        return jsonify({"error": "Select a valid month"}), 400
+
+    user_id = session["user_id"]
+    connection = get_db()
+
+    transactions = connection.execute("""
+        SELECT date, type, category, description, amount
+        FROM transactions
+        WHERE user_id = ? AND substr(date, 1, 7) = ?
+        ORDER BY date, id
+    """, (user_id, month)).fetchall()
+
+    budgets = connection.execute("""
+        SELECT b.category, b.amount,
+               COALESCE(SUM(t.amount), 0) AS spent
+        FROM budgets b
+        LEFT JOIN transactions t
+          ON t.user_id = b.user_id
+         AND t.category = b.category
+         AND t.type = 'expense'
+         AND substr(t.date, 1, 7) = b.month
+        WHERE b.user_id = ? AND b.month = ?
+        GROUP BY b.id, b.category, b.amount
+        ORDER BY b.category
+    """, (user_id, month)).fetchall()
+
+    connection.close()
+
+    income = sum(t["amount"] for t in transactions if t["type"] == "income")
+    expenses = sum(t["amount"] for t in transactions if t["type"] == "expense")
+
+    by_category = {}
+    for t in transactions:
+        if t["type"] == "expense":
+            by_category[t["category"]] = by_category.get(t["category"], 0) + t["amount"]
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+
+    writer.writerow(["Finance Tracker - Monthly Summary"])
+    writer.writerow(["Month", month])
+    writer.writerow(["User", csv_safe(session["username"])])
+    writer.writerow([])
+
+    writer.writerow(["SUMMARY"])
+    writer.writerow(["Total Income", f"{income:.2f}"])
+    writer.writerow(["Total Expenses", f"{expenses:.2f}"])
+    writer.writerow(["Balance", f"{income - expenses:.2f}"])
+    writer.writerow([])
+
+    writer.writerow(["SPENDING BY CATEGORY"])
+    writer.writerow(["Category", "Amount", "% of Expenses"])
+    for category, amount in sorted(by_category.items(), key=lambda i: -i[1]):
+        pct = (amount / expenses * 100) if expenses else 0
+        writer.writerow([category, f"{amount:.2f}", f"{pct:.1f}"])
+    writer.writerow([])
+
+    writer.writerow(["BUDGETS"])
+    writer.writerow(["Category", "Budget", "Spent", "Remaining", "% Used"])
+    for b in budgets:
+        limit = float(b["amount"])
+        spent = float(b["spent"])
+        pct = (spent / limit * 100) if limit else 0
+        writer.writerow([b["category"], f"{limit:.2f}", f"{spent:.2f}",
+                         f"{limit - spent:.2f}", f"{pct:.1f}"])
+    if not budgets:
+        writer.writerow(["No budgets set for this month"])
+    writer.writerow([])
+
+    writer.writerow(["TRANSACTIONS"])
+    writer.writerow(["Date", "Type", "Category", "Description", "Amount"])
+    for t in transactions:
+        writer.writerow([t["date"], t["type"], t["category"],
+                         csv_safe(t["description"]), f"{t['amount']:.2f}"])
+
+    # utf-8-sig so Excel opens it with the right encoding.
+    body = "\ufeff" + out.getvalue()
+    return Response(
+        body,
+        mimetype="text/csv",
+        headers={"Content-Disposition":
+                 f'attachment; filename="finance-summary-{month}.csv"'}
+    )
 
 
 # -----------------------------

@@ -543,3 +543,55 @@ tr:hover {
 .budget-notice-near { color: #805600; background: #fff7df; }
 .budget-notice-at-limit, .budget-notice-over { color: #a12430; background: #fff0f1; }
 #budget-status { margin: 16px 0; }
+
+
+/* Sprint 4: export + print */
+.month-filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.month-filter { flex-direction: row; }
+
+.export-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 18px;
+}
+
+.export-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+    margin-right: 4px;
+}
+
+.export-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    background: #fff;
+    color: #1f3c88;
+    border: 1.5px solid #1f3c88;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.export-button:hover { background: #eef2fb; }
+.export-button:active { transform: translateY(1px); }
+.export-button:focus-visible { outline: 3px solid #9db4ee; outline-offset: 2px; }
+
+.export-primary { background: #1f3c88; color: #fff; }
+.export-primary:hover { background: #17306d; }
+
+@media print {
+    .navbar, .no-print, .month-filter input, .month-filter label { display: none !important; }
+    body { background: #fff; }
+    .section-card, .summary-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+}
